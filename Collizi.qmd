@@ -1,0 +1,77 @@
+---
+title: "Colizzi Sim"
+format: html
+editor: visual
+---
+```{r}
+library(tidyverse)
+library(scales)
+library(broom)
+library(dagitty)
+library(dplyr)
+library(ggrepel)
+```
+
+```{r}
+#loading in my data
+State_Data <- read.csv("Data/Capstone_State_Data.csv")
+Race_Data <- read.csv("Data/Capstone_Race.csv")
+```
+```{r}
+State_Data <- State_Data %>%
+  filter(State != "Total")
+```
+
+```{r}
+State_Data$Percent.of.Survey <- gsub("[ ,$%]", "", State_Data$Percent.of.Survey)
+State_Data$Percent.of.Survey <- as.numeric(State_Data$Percent.of.Survey) /100
+```
+
+```{r}
+# Define the age groups, counts, and overall percentages
+age_groups <- list(
+  "18-24" = list(count = 11840, range = c(18, 24), percent = 43),
+  "25-44" = list(count = 10987, range = c(25, 44), percent = 40),
+  "45-64" = list(count = 4085, range = c(45, 64), percent = 15),
+  "65+" = list(count = 803, range = c(65, 90), percent = 3)
+)
+
+# Create an empty data frame to store unique ages and their percentages
+df <- data.frame(Age = integer(), Percent = numeric())
+
+# Populate the data frame with unique ages and evenly distributed percentages for each age group
+for (group in names(age_groups)) {
+  group_info <- age_groups[[group]]
+  
+  # Calculate the number of ages in this range
+  age_range <- seq(group_info$range[1], group_info$range[2])
+  num_ages_in_range <- length(age_range)
+  
+  # Distribute the group's percentage evenly across each age in the range
+  percent_per_age <- group_info$percent / num_ages_in_range
+  
+  # Create a data frame for the unique ages in this group with equal percentage
+  group_df <- data.frame(Age = age_range, Percent = rep(percent_per_age, num_ages_in_range))
+  
+  # Append to the main data frame
+  df <- rbind(df, group_df)
+}
+
+# Display the resulting data frame
+age_df <-df
+```
+
+
+```{r}
+set.seed(451)
+n <- 1000
+sim_data_Collizi <- tibble(
+  starting_hrt = rbinom(n,size = 1, prob = 1),
+  starting_mental_health = 1,
+  baseline_Zung = rnorm(n,mean= 48.40, sd=10.5),
+  baseline_SCL = rescale(rnorm(n,mean = 0.83, sd = 0.74), to= c(0,4))
+)
+
+```
+
+
