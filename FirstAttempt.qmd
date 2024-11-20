@@ -138,6 +138,9 @@ p_mental_health_y2 = 1 / (1 + exp(-(current_mental_health_noise - starting_hrt *
 mental_health_y2 = rbinom(n,size=1,prob=p_mental_health_y2))
 
 ```
+```{r}
+#newline
+```
 
 ```{r}
 head(sim_data_one)
