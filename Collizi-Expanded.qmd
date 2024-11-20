@@ -274,4 +274,62 @@ sim_data_Collizi_Expanded_false %>%
 #219 = 0.01526984
 ```
 
+```{r}
+simulate_scl <- function() {
+n <- 17188
+sim_data_Collizi_Expanded <- tibble(
+  gender = rbinom(n, size = 1, prob = 0.462532),
+  prior_mental_health = rbinom(n,size =1, prob = 0.31),
+  starting_mental_health = rnorm(n,mean=0,sd=10.5)+0.00001,
+  baseline_Zung = rescale(
+    pmin(pmax(starting_mental_health + 48.4 + prior_mental_health * 5, 20), 80),  # Limit range to [20, 80]
+    to = c(20, 80)
+  ),
+  baseline_SCL = rescale(pmin(pmax(starting_mental_health/12 + 0.73,0),4),
+                         to = c(0,4)),
+    state = sample(State_Data$State, n, replace = TRUE, prob = State_Data$Percent.of.Survey),
+  age = sample(age_df$Age, n, replace = TRUE, prob = age_df$Percent),
+  race = sample(Race_Data$Race, n, replace = TRUE, prob = Race_Data$Percent),
+  food_stamps = rbinom(n,size = 1, prob = 0.09),
+  hrt_noise  = rnorm(n,mean = 0.1, sd = 0.1),
+  p_starting_hrt = rescale(case_when(
+    state %in% c("CA", "OR", "WA", "MN", "CO", "NM", "IL", "NY", "VT", "DC", "ME", "MD", "CT", "MA", "RI") ~ 1,
+    state == "NJ" ~ 0.9,
+    state %in% c("AZ", "WI", "MI", "NV", "VA", "AK", "PA", "DE") ~ 0.85,
+    state %in% c("IA", "GA", "MT", "ND", "NH", "KS", "HI") ~ 0.7,
+    state %in% c("WY", "SD", "AL", "IN", "OK") ~ 0.6,
+    state %in% c("UT", "LA") ~ 0.5,
+    state %in% c("KY", "TN") ~ 0.4,
+    state %in% c("ID", "NE", "MO", "TX","AR", "MS") ~ 0.2,
+    state %in% c("SC", "FL", "NC", "OH", "WV") ~ 0.1,
+  ) + hrt_noise - food_stamps * 0.1, to = c(0.2, 1)),
+  starting_hrt = rbinom(n,size =1, prob = p_starting_hrt),
+  y1_mental_health = starting_mental_health* (1 - starting_hrt/5.6),
+  y1_Zung_noise = rnorm(n,mean=0,sd=6.5),
+    y1_Zung = rescale(
+    pmin(pmax(baseline_Zung * (y1_mental_health/starting_mental_health) + y1_Zung_noise, 20), 80),  
+    to = c(20, 80)
+  ),
+  y1_SCL_noise = rnorm(n,mean=0,sd=0.3),
+  y1_SCL = rescale(pmin(pmax(baseline_SCL * y1_mental_health/(starting_mental_health*1.33) +y1_SCL_noise,0),4),to = c(0,4))
+  )
+  # Fit a logistic regression model
+  mod <-lm(y1_Zung ~ starting_hrt + baseline_Zung * prior_mental_health, data = sim_data_Collizi_Expanded)
+  
+  # Extract p-values for all levels of starting-hrt
+  tidy(mod) %>%
+    filter(grepl("starting_hrt", term)) %>%
+    pull(estimate)
+}
+
+# Run the simulation 1000 times and collect all p-values
+set.seed(451)
+system.time({
+  chain_pvals <- replicate(10000, simulate_chain(), simplify = FALSE)
+})
+
+# Flatten the list of p-values and filter for those less than 0.05
+chain_pvals <- unlist(chain_pvals)
+table(chain_pvals < 0.01)
+```
 
