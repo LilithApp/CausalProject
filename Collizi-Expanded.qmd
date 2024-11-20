@@ -1,0 +1,277 @@
+---
+title: "Collizi expanded"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(scales)
+library(broom)
+library(dagitty)
+library(dplyr)
+library(ggrepel)
+```
+
+```{r}
+#loading in my data
+State_Data <- read.csv("Data/Capstone_State_Data.csv")
+Race_Data <- read.csv("Data/Capstone_Race.csv")
+```
+```{r}
+State_Data <- State_Data %>%
+  filter(State != "Total")
+```
+
+```{r}
+State_Data$Percent.of.Survey <- gsub("[ ,$%]", "", State_Data$Percent.of.Survey)
+State_Data$Percent.of.Survey <- as.numeric(State_Data$Percent.of.Survey) /100
+```
+
+```{r}
+# Define the age groups, counts, and overall percentages
+age_groups <- list(
+  "18-24" = list(count = 11840, range = c(18, 24), percent = 43),
+  "25-44" = list(count = 10987, range = c(25, 44), percent = 40),
+  "45-64" = list(count = 4085, range = c(45, 64), percent = 15),
+  "65+" = list(count = 803, range = c(65, 90), percent = 3)
+)
+
+# Create an empty data frame to store unique ages and their percentages
+df <- data.frame(Age = integer(), Percent = numeric())
+
+# Populate the data frame with unique ages and evenly distributed percentages for each age group
+for (group in names(age_groups)) {
+  group_info <- age_groups[[group]]
+  
+  # Calculate the number of ages in this range
+  age_range <- seq(group_info$range[1], group_info$range[2])
+  num_ages_in_range <- length(age_range)
+  
+  # Distribute the group's percentage evenly across each age in the range
+  percent_per_age <- group_info$percent / num_ages_in_range
+  
+  # Create a data frame for the unique ages in this group with equal percentage
+  group_df <- data.frame(Age = age_range, Percent = rep(percent_per_age, num_ages_in_range))
+  
+  # Append to the main data frame
+  df <- rbind(df, group_df)
+}
+
+# Display the resulting data frame
+age_df <-df
+```
+
+
+```{r}
+set.seed(451)
+n <- 1000000
+sim_data_Collizi <- tibble(
+  starting_hrt = rbinom(n,size = 1, prob = 1),
+  starting_mental_health = rnorm(n,mean=0,sd=10.5),
+  baseline_Zung = (starting_mental_health + 48.4),
+  baseline_SCL = starting_mental_health/14.18919 +0.83,
+  y1_mental_health = starting_mental_health * 0.82 * starting_hrt,
+  y1_Zung_noise = rnorm(n,mean=0,sd=6.5),
+  y1_Zung = (baseline_Zung * (y1_mental_health/starting_mental_health)+ y1_Zung_noise),
+  y1_SCL_noise = rnorm(n,mean=0,sd=0.18),
+  y1_SCL = baseline_SCL * (y1_mental_health/(starting_mental_health*1.33) - y1_SCL_noise)
+  )
+
+```
+
+```{r}
+set.seed(451)
+n <- 50000
+sim_data_Collizi_Expanded <- tibble(
+  gender = rbinom(n, size = 1, prob = 0.462532),
+  prior_mental_health = rbinom(n,size =1, prob = 0.31),
+  starting_mental_health = rnorm(n,mean=48.4,sd=10.5),
+  baseline_Zung = rescale(
+    pmin(pmax(starting_mental_health, 20), 80),  # Limit range to [20, 80]
+    to = c(20, 80)
+  ),
+  baseline_SCL = rescale(pmin(pmax(starting_mental_health/12 + 0.73,0),4),
+                         to = c(0,4)),
+    state = sample(State_Data$State, n, replace = TRUE, prob = State_Data$Percent.of.Survey),
+  age = sample(age_df$Age, n, replace = TRUE, prob = age_df$Percent),
+  race = sample(Race_Data$Race, n, replace = TRUE, prob = Race_Data$Percent),
+  food_stamps = rbinom(n,size = 1, prob = 0.09),
+  hrt_noise  = rnorm(n,mean = 0.1, sd = 0.1),
+  p_starting_hrt = rescale(case_when(
+    state %in% c("CA", "OR", "WA", "MN", "CO", "NM", "IL", "NY", "VT", "DC", "ME", "MD", "CT", "MA", "RI") ~ 1,
+    state == "NJ" ~ 0.9,
+    state %in% c("AZ", "WI", "MI", "NV", "VA", "AK", "PA", "DE") ~ 0.85,
+    state %in% c("IA", "GA", "MT", "ND", "NH", "KS", "HI") ~ 0.7,
+    state %in% c("WY", "SD", "AL", "IN", "OK") ~ 0.6,
+    state %in% c("UT", "LA") ~ 0.5,
+    state %in% c("KY", "TN") ~ 0.4,
+    state %in% c("ID", "NE", "MO", "TX","AR", "MS") ~ 0.2,
+    state %in% c("SC", "FL", "NC", "OH", "WV") ~ 0.1,
+  ) + hrt_noise - food_stamps * 0.2, to = c(0.1, 1)),
+  starting_hrt = rbinom(n,size =1, prob = p_starting_hrt),
+  y1_mental_health = starting_mental_health* (1 - starting_hrt/5.6),
+  y1_Zung_noise = rnorm(n,mean=0,sd=6.5),
+  y1_Zung = rescale(
+    pmin(pmax(baseline_Zung * (y1_mental_health/starting_mental_health) + y1_Zung_noise, 20), 80),
+    to = c(20, 80)
+  ),
+  y1_SCL_noise = rnorm(n,mean=0,sd=0.25),
+  y1_SCL = rescale(pmin(pmax(baseline_SCL * y1_mental_health/(starting_mental_health*1.33) +y1_SCL_noise,0),4),to = c(0,4))
+  )
+```
+
+```{r}
+mean(sim_data_Collizi_Expanded$baseline_Zung)
+sim_data_Collizi_Expanded_true <- 
+  sim_data_Collizi_Expanded %>%
+  filter(starting_hrt == 1) 
+mean(sim_data_Collizi_Expanded_true$y1_Zung)
+sim_data_Collizi_Expanded_false <- 
+  sim_data_Collizi_Expanded %>%
+  filter(starting_hrt == 0) 
+mean(sim_data_Collizi_Expanded_false$y1_Zung)
+```
+```{r}
+mean(sim_data_Collizi_Expanded$baseline_SCL)
+mean(sim_data_Collizi_Expanded$y1_SCL)
+sd(sim_data_Collizi_Expanded$y1_Zung)
+sd(sim_data_Collizi_Expanded$baseline_Zung)
+```
+```{r}
+mod <- lm(baseline_Zung ~ prior_mental_health, data = sim_data_Collizi_Expanded)
+summary(mod)
+```
+
+
+```{r}
+mod_test <- lm(y1_Zung ~ starting_hrt + baseline_Zung * prior_mental_health + food_stamps, data = sim_data_Collizi_Expanded)
+summary(mod_test)
+```
+
+
+```{r}
+simulate_chain <- function() {
+n <- 17188
+sim_data_Collizi_Expanded <- tibble(
+  gender = rbinom(n, size = 1, prob = 0.462532),
+  prior_mental_health = rbinom(n,size =1, prob = 0.31),
+  starting_mental_health = rnorm(n,mean=0,sd=10.5)+0.00001,
+  baseline_Zung = rescale(
+    pmin(pmax(starting_mental_health + 48.4 + prior_mental_health * 5, 20), 80),  # Limit range to [20, 80]
+    to = c(20, 80)
+  ),
+  baseline_SCL = rescale(pmin(pmax(starting_mental_health/12 + 0.73,0),4),
+                         to = c(0,4)),
+    state = sample(State_Data$State, n, replace = TRUE, prob = State_Data$Percent.of.Survey),
+  age = sample(age_df$Age, n, replace = TRUE, prob = age_df$Percent),
+  race = sample(Race_Data$Race, n, replace = TRUE, prob = Race_Data$Percent),
+  food_stamps = rbinom(n,size = 1, prob = 0.09),
+  hrt_noise  = rnorm(n,mean = 0.1, sd = 0.1),
+  p_starting_hrt = rescale(case_when(
+    state %in% c("CA", "OR", "WA", "MN", "CO", "NM", "IL", "NY", "VT", "DC", "ME", "MD", "CT", "MA", "RI") ~ 1,
+    state == "NJ" ~ 0.9,
+    state %in% c("AZ", "WI", "MI", "NV", "VA", "AK", "PA", "DE") ~ 0.85,
+    state %in% c("IA", "GA", "MT", "ND", "NH", "KS", "HI") ~ 0.7,
+    state %in% c("WY", "SD", "AL", "IN", "OK") ~ 0.6,
+    state %in% c("UT", "LA") ~ 0.5,
+    state %in% c("KY", "TN") ~ 0.4,
+    state %in% c("ID", "NE", "MO", "TX","AR", "MS") ~ 0.2,
+    state %in% c("SC", "FL", "NC", "OH", "WV") ~ 0.1,
+  ) + hrt_noise - food_stamps * 0.1, to = c(0.2, 1)),
+  starting_hrt = rbinom(n,size =1, prob = p_starting_hrt),
+  y1_mental_health = starting_mental_health* (1 - starting_hrt/5.6),
+  y1_Zung_noise = rnorm(n,mean=0,sd=6.5),
+    y1_Zung = rescale(
+    pmin(pmax(baseline_Zung * (y1_mental_health/starting_mental_health) + y1_Zung_noise, 20), 80),  
+    to = c(20, 80)
+  ),
+  y1_SCL_noise = rnorm(n,mean=0,sd=0.3),
+  y1_SCL = rescale(pmin(pmax(baseline_SCL * y1_mental_health/(starting_mental_health*1.33) +y1_SCL_noise,0),4),to = c(0,4))
+  )
+  # Fit a logistic regression model
+  mod <-lm(y1_Zung ~ starting_hrt + baseline_Zung * prior_mental_health, data = sim_data_Collizi_Expanded)
+  
+  # Extract p-values for all levels of starting-hrt
+  tidy(mod) %>%
+    filter(grepl("starting_hrt", term)) %>%
+    pull(estimate)
+}
+
+# Run the simulation 1000 times and collect all p-values
+set.seed(451)
+system.time({
+  chain_pvals <- replicate(10000, simulate_chain(), simplify = FALSE)
+})
+
+# Flatten the list of p-values and filter for those less than 0.05
+chain_pvals <- unlist(chain_pvals)
+table(chain_pvals < 0.01)
+```
+
+
+
+```{r}
+mean(chain_pvals)
+```
+
+#Zung-Score range
+20–44 Normal Range
+45–59 Mildly Depressed
+60–69 Moderately Depressed
+70 and above Severely Depressed
+
+
+```{r}
+ggplot(sim_data_Collizi_Expanded_true, aes(x=y1_Zung)) +
+  geom_density()
+```
+#The average for people who got treated is around 40 which means that a majority of people now are classified as not having depression from before when the average of 49 meant the average person had mild depression.
+```{r}
+#total = 35658
+count(sim_data_Collizi_Expanded_true)
+sim_data_Collizi_Expanded_true %>%
+  filter(y1_Zung < 44.0001) %>% 
+  count()
+#23136 = 0.6488124
+sim_data_Collizi_Expanded_true %>%
+  filter(y1_Zung > 44 & y1_Zung < 59.0001) %>% 
+  count()
+#11865 = 0.3327351
+sim_data_Collizi_Expanded_true %>%
+  filter(y1_Zung > 59 & y1_Zung < 70.0001) %>% 
+  count()
+#638 = 0.0178917
+sim_data_Collizi_Expanded_true %>%
+  filter(y1_Zung > 69.99999) %>% 
+  count()
+#19 = 0.0005328398
+```
+
+```{r}
+ggplot(sim_data_Collizi_Expanded_false, aes(x=y1_Zung)) +
+  geom_density()
+```
+
+```{r}
+#total = 14342
+count(sim_data_Collizi_Expanded_false)
+sim_data_Collizi_Expanded_false %>%
+  filter(y1_Zung < 44.0001) %>% 
+  count()
+#4002 = 0.2790211
+sim_data_Collizi_Expanded_false %>%
+  filter(y1_Zung > 44 & y1_Zung < 59.0001) %>% 
+  count()
+#8071 = 0.5627135
+sim_data_Collizi_Expanded_false %>%
+  filter(y1_Zung > 59 & y1_Zung < 70.0001) %>% 
+  count()
+#2050 = 0.1429269
+sim_data_Collizi_Expanded_false %>%
+  filter(y1_Zung > 69.99999) %>% 
+  count()
+#219 = 0.01526984
+```
+
+
