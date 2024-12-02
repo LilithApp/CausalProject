@@ -1,0 +1,208 @@
+---
+title: "Lilith-Expanded-Y2+"
+author: "Lilith Appel"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(scales)
+library(broom)
+library(dagitty)
+library(dplyr)
+library(ggrepel)
+```
+
+
+```{r}
+#loading in my data
+State_Data <- read.csv("Data/Capstone_State_Data.csv")
+Race_Data <- read.csv("Data/Capstone_Race.csv")
+```
+
+```{r}
+State_Data <- State_Data %>%
+  filter(State != "Total")
+```
+
+```{r}
+State_Data$Percent.of.Survey <- gsub("[ ,$%]", "", State_Data$Percent.of.Survey)
+State_Data$Percent.of.Survey <- as.numeric(State_Data$Percent.of.Survey) /100
+```
+
+```{r}
+# Define the age groups, counts, and overall percentages
+age_groups <- list(
+  "18-24" = list(count = 11840, range = c(18, 24), percent = 43),
+  "25-44" = list(count = 10987, range = c(25, 44), percent = 40),
+  "45-64" = list(count = 4085, range = c(45, 64), percent = 15),
+  "65+" = list(count = 803, range = c(65, 90), percent = 3)
+)
+
+# Create an empty data frame to store unique ages and their percentages
+df <- data.frame(Age = integer(), Percent = numeric())
+
+# Populate the data frame with unique ages and evenly distributed percentages for each age group
+for (group in names(age_groups)) {
+  group_info <- age_groups[[group]]
+  
+  # Calculate the number of ages in this range
+  age_range <- seq(group_info$range[1], group_info$range[2])
+  num_ages_in_range <- length(age_range)
+  
+  # Distribute the group's percentage evenly across each age in the range
+  percent_per_age <- group_info$percent / num_ages_in_range
+  
+  # Create a data frame for the unique ages in this group with equal percentage
+  group_df <- data.frame(Age = age_range, Percent = rep(percent_per_age, num_ages_in_range))
+  
+  # Append to the main data frame
+  df <- rbind(df, group_df)
+}
+
+# Display the resulting data frame
+age_df <-df
+```
+
+```{r}
+# Define the age groups, counts, and overall percentages
+income_groups <- list(
+  "Under 10000" = list(count = 11840, range = c(0, 10000), percent = 16.2),
+  "10000-20000" = list(count = 10987, range = c(10000, 20000), percent = 13.8),
+  "20000-30000" = list(count = 4085, range = c(20000, 30000), percent = 11),
+  "30000-40000+" = list(count = 803, range = c(30000, 40000), percent = 10.2),
+    "40000-60000+" = list(count = 803, range = c(40000, 60000), percent = 14.5),
+    "60000-100000+" = list(count = 803, range = c(60000, 100000), percent = 17.5),
+    "100000++" = list(count = 803, range = c(100000, 1000000), percent = 16.7)
+)
+
+# Create an empty data frame to store unique ages and their percentages
+df <- data.frame(Income = integer(), Percent = numeric())
+
+# Populate the data frame with unique ages and evenly distributed percentages for each age group
+for (group in names(income_groups)) {
+  group_info <- income_groups[[group]]
+  
+  # Calculate the number of ages in this range
+  income_range <- seq(group_info$range[1], group_info$range[2])
+  num_income_in_range <- length(income_range)
+  
+  # Distribute the group's percentage evenly across each age in the range
+  percent_per_income <- group_info$percent / num_income_in_range
+  
+  # Create a data frame for the unique ages in this group with equal percentage
+  group_df <- data.frame(Income = income_range, Percent = rep(percent_per_income, num_income_in_range))
+  
+  # Append to the main data frame
+  df <- rbind(df, group_df)
+}
+
+# Display the resulting data frame
+income_df <-df
+```
+
+
+```{r}
+set.seed(451)
+n <- 100000
+sim_data_Collizi_Expanded <- tibble(
+  gender = rbinom(n, size = 1, prob = 0.462532),
+  prior_mental_health = rbinom(n,size =1, prob = 0.31),
+  starting_mental_health = rnorm(n,mean=48.4,sd=10.5) + 0.00000001,
+  baseline_Zung = rescale(
+    pmin(pmax(starting_mental_health, 20), 80),  # Limit range to [20, 80]
+    to = c(20, 80)
+  ),
+  baseline_SCL = rescale(pmin(pmax((starting_mental_health-48.4)/12 + 0.73,0),4),
+                         to = c(0,4)),
+    state = sample(State_Data$State, n, replace = TRUE, prob = State_Data$Percent.of.Survey),
+  income = sample(income_df$Income, n, replace = TRUE, prob = income_df$Percent),
+  race = sample(Race_Data$Race, n, replace = TRUE, prob = Race_Data$Percent),
+  food_stamps = rbinom(n,size = 1, prob = 0.09),
+  hrt_noise  = rnorm(n,mean = 0.1, sd = 0.1),
+  p_starting_hrt = rescale(case_when(
+    state %in% c("CA", "OR", "WA", "MN", "CO", "NM", "IL", "NY", "VT", "DC", "ME", "MD", "CT", "MA", "RI") ~ 1,
+    state == "NJ" ~ 0.9,
+    state %in% c("AZ", "WI", "MI", "NV", "VA", "AK", "PA", "DE") ~ 0.85,
+    state %in% c("IA", "GA", "MT", "ND", "NH", "KS", "HI") ~ 0.7,
+    state %in% c("WY", "SD", "AL", "IN", "OK") ~ 0.6,
+    state %in% c("UT", "LA") ~ 0.5,
+    state %in% c("KY", "TN") ~ 0.4,
+    state %in% c("ID", "NE", "MO", "TX","AR", "MS") ~ 0.2,
+    state %in% c("SC", "FL", "NC", "OH", "WV") ~ 0.1,
+  ) + hrt_noise + log(income) *0.01 , to = c(0.1, 1)),
+  starting_hrt = rbinom(n,size =1, prob = p_starting_hrt),
+  y1_mental_health = (starting_mental_health* (1 - starting_hrt/5.6)),
+  y1_Zung_noise = rnorm(n,mean=0,sd=6.5),
+  y1_Zung = rescale(
+    pmin(pmax(baseline_Zung * (y1_mental_health/starting_mental_health) + y1_Zung_noise, 20), 80),
+    to = c(20, 80)
+  ),
+  y1_SCL_noise = rnorm(n,mean=0,sd=0.25),
+  y1_SCL = rescale(pmin(pmax(baseline_SCL * y1_mental_health/(starting_mental_health*1.33) +y1_SCL_noise,0),4),to = c(0,4))
+  )
+```
+
+```{r}
+set.seed(451)
+n <- 100000
+sim_data_Lilith_y2 <- tibble(
+  gender = rbinom(n, size = 1, prob = 0.462532),
+  prior_mental_health = rbinom(n,size =1, prob = 0.31),
+  starting_mental_health = rnorm(n,mean=48.4,sd=10.5) + 0.00000001,
+  baseline_Zung = rescale(
+    pmin(pmax(starting_mental_health, 20), 80),  # Limit range to [20, 80]
+    to = c(20, 80)
+  ),
+  baseline_SCL = rescale(pmin(pmax((starting_mental_health-48.4)/12 + 0.73,0),4),
+                         to = c(0,4)),
+    state = sample(State_Data$State, n, replace = TRUE, prob = State_Data$Percent.of.Survey),
+  income = sample(income_df$Income, n, replace = TRUE, prob = income_df$Percent),
+  race = sample(Race_Data$Race, n, replace = TRUE, prob = Race_Data$Percent),
+  food_stamps = rbinom(n,size = 1, prob = 0.09),
+  hrt_noise  = rnorm(n,mean = 0.1, sd = 0.1),
+  p_starting_hrt = rescale(case_when(
+    state %in% c("CA", "OR", "WA", "MN", "CO", "NM", "IL", "NY", "VT", "DC", "ME", "MD", "CT", "MA", "RI") ~ 1,
+    state == "NJ" ~ 0.9,
+    state %in% c("AZ", "WI", "MI", "NV", "VA", "AK", "PA", "DE") ~ 0.85,
+    state %in% c("IA", "GA", "MT", "ND", "NH", "KS", "HI") ~ 0.7,
+    state %in% c("WY", "SD", "AL", "IN", "OK") ~ 0.6,
+    state %in% c("UT", "LA") ~ 0.5,
+    state %in% c("KY", "TN") ~ 0.4,
+    state %in% c("ID", "NE", "MO", "TX","AR", "MS") ~ 0.2,
+    state %in% c("SC", "FL", "NC", "OH", "WV") ~ 0.1,
+  ) + hrt_noise + log(income) *0.01 , to = c(0.1, 1)),
+  starting_hrt = rbinom(n,size =1, prob = p_starting_hrt),
+  y1_mental_health = (starting_mental_health* (1 - starting_hrt/5.6)),
+  y1_Zung_noise = rnorm(n,mean=0,sd=6.5),
+  y1_Zung = rescale(
+    pmin(pmax(baseline_Zung * (y1_mental_health/starting_mental_health) + y1_Zung_noise, 20), 80),
+    to = c(20, 80)
+  ),
+  y1_SCL_noise = rnorm(n,mean=0,sd=0.25),
+  y1_SCL = rescale(pmin(pmax(baseline_SCL * y1_mental_health/(starting_mental_health*1.33) +y1_SCL_noise,0),4),to = c(0,4)),
+  y2_mental_health = (y1_mental_health * (1 - starting_hrt/10)),
+  y2_Zung_noise = rnorm(n,mean=0,sd=6.5),
+  y2_Zung = rescale(
+    pmin(pmax(y1_Zung * (y2_mental_health/y1_mental_health) + y2_Zung_noise, 20), 80),
+    to = c(20, 80)
+  ))
+```
+
+```{r}
+mean(sim_data_Collizi_Expanded$baseline_Zung)
+sim_data_Collizi_Expanded_true <- 
+  sim_data_Collizi_Expanded %>%
+  filter(starting_hrt == 1) 
+mean(sim_data_Collizi_Expanded_true$y1_Zung)
+sim_data_Collizi_Expanded_false <- 
+  sim_data_Collizi_Expanded %>%
+  filter(starting_hrt == 0) 
+mean(sim_data_Collizi_Expanded_false$y1_Zung)
+mean(sim_data_Collizi_Expanded_true$y2_Zung)
+sim_data_Collizi_Expanded_false <- 
+  sim_data_Collizi_Expanded %>%
+  filter(starting_hrt == 0) 
+mean(sim_data_Collizi_Expanded_false$y2_Zung)
+```
