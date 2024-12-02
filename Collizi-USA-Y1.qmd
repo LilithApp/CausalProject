@@ -11,6 +11,7 @@ library(broom)
 library(dagitty)
 library(dplyr)
 library(ggrepel)
+library(gridExtra)
 ```
 
 ```{r}
@@ -100,27 +101,10 @@ for (group in names(income_groups)) {
 income_df <-df
 ```
 
-```{r}
-set.seed(451)
-n <- 1000000
-sim_data_Collizi <- tibble(
-  starting_hrt = rbinom(n,size = 1, prob = 1),
-  starting_mental_health = rnorm(n,mean=0,sd=10.5),
-  baseline_Zung = (starting_mental_health + 48.4),
-
-  baseline_SCL = starting_mental_health/14.18919 +0.83,
-  y1_mental_health = starting_mental_health * 0.82 * starting_hrt,
-  y1_Zung_noise = rnorm(n,mean=0,sd=6.5),
-  y1_Zung = (baseline_Zung * (y1_mental_health/starting_mental_health)+ y1_Zung_noise),
-  y1_SCL_noise = rnorm(n,mean=0,sd=0.18),
-  y1_SCL = baseline_SCL * (y1_mental_health/(starting_mental_health*1.33) - y1_SCL_noise)
-  )
-
-```
 
 ```{r}
 set.seed(451)
-n <- 50000
+n <- 100000
 sim_data_Collizi_Expanded <- tibble(
   gender = rbinom(n, size = 1, prob = 0.462532),
   prior_mental_health = rbinom(n,size =1, prob = 0.31),
@@ -252,68 +236,80 @@ system.time({
 })
 
 # Flatten the list of p-values and filter for those less than 0.05
-chain_pvals <- unlist(chain_pvals)
-table(chain_pvals < 0.01)
+chain_zung <- unlist(chain_pvals)
 ```
 
 ```{r}
-mean(chain_pvals)
+mean(chain_zung)
+median(chain_zung)
 ```
-
+#On average people's Zung Score decreased by 8.8 points
 #Zung-Score range 20–44 Normal Range 45–59 Mildly Depressed 60–69 Moderately Depressed 70 and above Severely Depressed
+```{r}
+y1_zung_dataframe <- as.data.frame(chain_zung)
+```
 
 ```{r}
-ggplot(sim_data_Collizi_Expanded_true, aes(x=y1_Zung)) +
+ggplot(y1_zung_dataframe, aes(x=chain_zung)) +
+  geom_histogram()
+```
+
+```{r}
+hrt_true_y1_zung <- ggplot(sim_data_Collizi_Expanded_true, aes(x=y1_Zung)) +
   geom_density()
 ```
 
 #The average for people who got treated is around 40 which means that a majority of people now are classified as not having depression from before when the average of 49 meant the average person had mild depression.
 
 ```{r}
-#total = 35658
+#total = 64899
 count(sim_data_Collizi_Expanded_true)
 sim_data_Collizi_Expanded_true %>%
   filter(y1_Zung < 44.0001) %>% 
   count()
-#23136 = 0.6488124
+#42359 = 0.6526911
 sim_data_Collizi_Expanded_true %>%
   filter(y1_Zung > 44 & y1_Zung < 59.0001) %>% 
   count()
-#11865 = 0.3327351
+#20158 = 0.3106057
 sim_data_Collizi_Expanded_true %>%
   filter(y1_Zung > 59 & y1_Zung < 70.0001) %>% 
   count()
-#638 = 0.0178917
+#2227 = 0.03431486
 sim_data_Collizi_Expanded_true %>%
   filter(y1_Zung > 69.99999) %>% 
   count()
-#19 = 0.0005328398
+#155 = 0.002388326
 ```
 
 ```{r}
-ggplot(sim_data_Collizi_Expanded_false, aes(x=y1_Zung)) +
+hrt_false_y1_zung <- ggplot(sim_data_Collizi_Expanded_false, aes(x=y1_Zung)) +
   geom_density()
 ```
 
+
 ```{r}
-#total = 14342
+#total = 35100
 count(sim_data_Collizi_Expanded_false)
 sim_data_Collizi_Expanded_false %>%
   filter(y1_Zung < 44.0001) %>% 
   count()
-#4002 = 0.2790211
+#12641 = 0.3601425
 sim_data_Collizi_Expanded_false %>%
   filter(y1_Zung > 44 & y1_Zung < 59.0001) %>% 
   count()
-#8071 = 0.5627135
+#15670 = 0.4464387
 sim_data_Collizi_Expanded_false %>%
   filter(y1_Zung > 59 & y1_Zung < 70.0001) %>% 
   count()
-#2050 = 0.1429269
+#5347 = 0.1523362
 sim_data_Collizi_Expanded_false %>%
   filter(y1_Zung > 69.99999) %>% 
   count()
-#219 = 0.01526984
+#1442 = 0.04108262
+```
+```{r}
+grid.arrange(hrt_true_y1_zung, hrt_false_y1_zung, ncol=2)
 ```
 
 ```{r}
@@ -373,6 +369,7 @@ system.time({
 chain_scl <- unlist(chain_scl)
 
 ```
+
 ```{r}
 mean(chain_scl)
 ```
@@ -381,11 +378,15 @@ mean(chain_scl)
 
 
 ```{r}
-ggplot(sim_data_Collizi_Expanded_true, aes(x=y1_SCL)) +
+hrt_true_y1_scl <- ggplot(sim_data_Collizi_Expanded_true, aes(x=y1_SCL)) +
   geom_density()
 ```
 ```{r}
-ggplot(sim_data_Collizi_Expanded_false, aes(x=y1_SCL)) +
+hrt_false_y1_scl <- ggplot(sim_data_Collizi_Expanded_false, aes(x=y1_SCL)) +
   geom_density()
+```
+
+```{r}
+grid.arrange(hrt_true_y1_scl, hrt_false_y1_scl, ncol=2)
 ```
 
