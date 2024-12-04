@@ -118,7 +118,7 @@ sim_data_Collizi_Expanded <- tibble(
   baseline_SCL = rescale(pmin(pmax((starting_mental_health-48.4)/12 + 0.73,0),4),
                          to = c(0,4)),
     state = sample(State_Data$State, n, replace = TRUE, prob = State_Data$Percent.of.Survey),
-  income = sample(income_df$Income, n, replace = TRUE, prob = income_df$Percent),
+  income = sample(income_df$Income, n, replace = TRUE, prob = income_df$Percent) + 1,
   race = sample(Race_Data$Race, n, replace = TRUE, prob = Race_Data$Percent),
   food_stamps = rbinom(n,size = 1, prob = 0.09),
   hrt_noise  = rnorm(n,mean = 0.1, sd = 0.1),
@@ -132,7 +132,7 @@ sim_data_Collizi_Expanded <- tibble(
     state %in% c("KY", "TN") ~ 0.4,
     state %in% c("ID", "NE", "MO", "TX","AR", "MS") ~ 0.2,
     state %in% c("SC", "FL", "NC", "OH", "WV") ~ 0.1,
-  ) + hrt_noise + log(income) *0.01 , to = c(0.1, 1)),
+  ) + hrt_noise + log(income) * 0.01 , to = c(0.1, 1)),
   starting_hrt = rbinom(n,size =1, prob = p_starting_hrt),
   y1_mental_health = starting_mental_health* (1 - starting_hrt/5.6),
   y1_Zung_noise = rnorm(n,mean=0,sd=6.5),
@@ -191,7 +191,7 @@ mod_test <- lm(y1_Zung ~ starting_hrt + baseline_Zung * prior_mental_health + in
 summary(mod_test)
 ```
 
-```{r}
+```{r, eval=FALSE}
 simulate_chain <- function() {
 n <- 17188
 sim_data_Collizi_Expanded <- tibble(
@@ -248,9 +248,11 @@ system.time({
 
 # Flatten the list of p-values and filter for those less than 0.05
 chain_zung <- unlist(chain_pvals)
+write_rds(simulate_chain, "/Users/aidanappel/Desktop/Fall_2024/Casual/Final Project/Simulations/zung_chain.rds")
 ```
-```{r}
-simulate_chain <- function() {
+
+```{r,eval=FALSE}
+simulate_chain_p <- function() {
 n <- 17188
 sim_data_Collizi_Expanded_state <- tibble(
   gender = rbinom(n, size = 1, prob = 0.462532),
@@ -309,8 +311,8 @@ system.time({
 # Flatten the list of p-values and filter for those less than 0.05
 chain_zung_state <- unlist(chain_pvals)
 table(chain_zung_state < 0.05)
+write_rds(simulate_chain_p, "/Users/aidanappel/Desktop/Fall_2024/Casual/Final Project/Simulations/zung_chain_state.rds")
 ```
-
 
 ```{r}
 mean(chain_zung)
@@ -357,7 +359,7 @@ ggplot(sim_data_Collizi_Expanded, aes(x = y1_Zung, color = as.factor(starting_hr
   theme_minimal()
 ```
 
-```{r}
+```{r,eval=FALSE}
 simulate_scl <- function() {
 n <- 17188
 sim_data_Collizi_Expanded <- tibble(
@@ -412,7 +414,7 @@ system.time({
 })
 
 chain_scl <- unlist(chain_scl)
-
+write_rds(simulate_scl, "/Users/aidanappel/Desktop/Fall_2024/Casual/Final Project/Simulations/scl_sim.rds")
 ```
 
 ```{r}
@@ -435,15 +437,27 @@ state_avg_zung <- sim_data_Collizi_Expanded %>%
   summarize(average_y1_Zung = mean(y1_Zung, na.rm = TRUE))
 ```
 
+```{r}
+state_avg_p_hrt <- sim_data_Collizi_Expanded %>%
+  group_by(state) %>%
+  summarize(average_p_hrt = mean(p_starting_hrt, na.rm = TRUE))
+```
+
+```{r}
+state_zung_p_hrt <- state_avg_zung %>%
+  left_join(state_avg_p_hrt)
+```
+
 
 ```{r}
 plot_usmap(data = state_avg_zung, values = "average_y1_Zung", region = "state") + 
   labs(title = "U.S. States",
-       subtitle = "Map of the 15 states, colored by percent of energy that is wind and solar") + 
+       subtitle = "Average Zung Score by states") + 
     scale_fill_continuous(low = "white", high = "red", name = "average_y1_Zung", label = scales::comma) +
   theme(panel.background=element_blank()) +  
   theme(plot.title = element_text(size = 15))
 ```
+
 ```{r}
 state_test <- lm(y1_Zung ~  p_starting_hrt + income , data = sim_data_Collizi_Expanded)
 summary(state_test)
@@ -457,4 +471,3 @@ mod_test_access <- lm(
 
 summary(mod_test_access)
 ```
- 
